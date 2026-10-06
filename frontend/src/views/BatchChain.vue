@@ -16,6 +16,11 @@
           <el-descriptions-item label="坏果率">
             <span :style="{ color: chain.batch.defectRate >= 0.05 ? '#f56c6c' : '#67c23a' }">{{ (chain.batch.defectRate * 100).toFixed(1) }}%</span>
           </el-descriptions-item>
+          <el-descriptions-item label="库存状态">
+            <el-tag v-if="chain.batch.frozen" size="small" type="danger" effect="dark">已冻结（坏果预警）</el-tag>
+            <el-tag v-else size="small" type="success">正常</el-tag>
+            <span v-if="chain.batch.replacementPackaging" class="sub" style="margin-left: 6px">换包装：{{ chain.batch.replacementPackaging }}</span>
+          </el-descriptions-item>
           <el-descriptions-item label="GMV">¥{{ chain.orderStats.gmv }}</el-descriptions-item>
           <el-descriptions-item label="售后退款">¥{{ chain.aftersalesStats.refund }}</el-descriptions-item>
           <el-descriptions-item label="温区/冷链">{{ chain.batch.product?.tempZone }}{{ chain.batch.product?.coldChainRequired ? ' · 需冷链' : '' }}</el-descriptions-item>
@@ -92,9 +97,33 @@
             </div>
           </el-timeline-item>
 
-          <!-- 6 结算 -->
+          <!-- 6 坏果预警与质检定责 -->
+          <el-timeline-item v-if="chain.defectAlerts?.length" type="danger" placement="top">
+            <b>⑥ 坏果预警 · 库存冻结 · 质检定责</b>
+            <div class="stage">
+              <div v-for="al in chain.defectAlerts" :key="al.id" class="line">
+                <el-tag size="small" type="danger" effect="dark">{{ al.alertNo }}</el-tag>
+                坏果率 {{ (al.defectRate * 100).toFixed(1) }}%（{{ al.defectCount }}/{{ al.soldQty }}）
+                <el-tag size="small" :type="al.status === 'closed' ? 'success' : 'danger'">{{ alertStatus(al.status) }}</el-tag>
+                <el-tag size="small" :type="respTag(al.responsibility)">{{ respText(al.responsibility) }}</el-tag>
+                <div v-if="al.frozenQty" class="sub">已冻结同批次剩余库存 {{ al.frozenQty }} 件；客服优先处理同城市/同线路/同包装用户</div>
+                <div v-if="al.replacementPackaging" class="sub">定责包装承压 → 后续发货更换：{{ al.replacementPackaging }}（平台承担赔付）</div>
+                <div v-if="Number(al.farmerDeduction) > 0" class="sub" style="color: #f56c6c">定责采摘成熟度过高/多方 → 农户结算扣赔 ¥{{ al.farmerDeduction }}</div>
+                <div v-if="al.responsibilityNote" class="sub">定责说明：{{ al.responsibilityNote }}</div>
+                <div v-for="r in (chain.qcReviews || []).filter(x => x.alertId === al.id)" :key="r.id" class="qc-box">
+                  <el-tag size="small" :type="respTag(r.responsibility)" effect="plain">复盘·{{ respText(r.responsibility) }}</el-tag>
+                  <div v-if="r.outboundFindings" class="sub">出库照片：{{ r.outboundFindings }}</div>
+                  <div v-if="r.arrivalFindings" class="sub">到货照片：{{ r.arrivalFindings }}</div>
+                  <div v-if="r.tempzoneFindings" class="sub">物流温区：{{ r.tempzoneFindings }}</div>
+                </div>
+                <el-button v-if="canManageAlert" size="small" link type="primary" @click="$router.push('/defect-alerts')">前往坏果预警处置 →</el-button>
+              </div>
+            </div>
+          </el-timeline-item>
+
+          <!-- 7 结算 -->
           <el-timeline-item :type="chain.settlements.length ? 'success' : 'info'" :hollow="!chain.settlements.length" placement="top">
-            <b>⑥ 农户结算</b>
+            <b>⑦ 农户结算</b>
             <div class="stage">
               <div v-for="s in chain.settlements" :key="s.id" class="line">
                 订单 {{ s.orderCount }} 笔 · 应收 ¥{{ s.grossAmount }} − 售后扣减 ¥{{ s.refundAmount }} =
@@ -105,9 +134,9 @@
             </div>
           </el-timeline-item>
 
-          <!-- 7 风险与反向决策 -->
+          <!-- 8 风险与反向决策 -->
           <el-timeline-item v-if="chain.risks.length || chain.decisions.length" type="danger" placement="top">
-            <b>⑦ 链路风险与售后反向决策</b>
+            <b>⑧ 链路风险与售后反向决策</b>
             <div class="stage">
               <div v-for="r in chain.risks" :key="'r' + r.id" class="line">
                 <el-tag size="small" :type="r.level === 'critical' ? 'danger' : 'warning'">{{ riskTypes[r.type] || r.type }}</el-tag>
@@ -126,11 +155,14 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import request from '../api/request';
+import { useAuthStore } from '../stores/auth';
 
 const route = useRoute();
+const canManageAlert = computed(() =>
+  ['admin', 'operator', 'warehouse', 'aftersales'].includes(useAuthStore().role));
 const chain = ref(null);
 const loading = ref(false);
 const riskTypes = ref({});
@@ -139,6 +171,9 @@ function batchText(s) { return { pending: '待选品', qc_passed: '质检通过'
 function batchTag(s) { return { pending: 'warning', qc_passed: 'success', qc_failed: 'danger', locked: 'primary', on_sale: 'danger', closed: 'info' }[s] || 'info'; }
 function liveText(s) { return { planned: '已排期', locked: '已锁库', live: '直播中', ended: '已结束', cancelled: '已取消' }[s] || s; }
 function decisionText(t) { return { continue_farmer: '继续选择该农户', drop_farmer: '暂停该农户排播', adjust_anchor: '调整主播口径', reduce_presale: '降低预售量', brand_notice: '品牌风险说明' }[t] || t; }
+function alertStatus(s) { return { open: '已形成·冻结', reviewing: '质检定责中', responsibility_set: '已定责', closed: '已闭环' }[s] || s; }
+function respText(r) { return { pending: '待定责', packaging: '包装承压', ripeness: '采摘成熟度过高', logistics: '物流温区', mixed: '多方共同', none: '证据不足' }[r] || r; }
+function respTag(r) { return { pending: 'info', packaging: 'warning', ripeness: 'danger', logistics: 'warning', mixed: 'danger', none: 'info' }[r] || 'info'; }
 function fmtTime(t) { return t ? String(t).replace('T', ' ').slice(0, 16) : ''; }
 
 onMounted(async () => {
@@ -155,4 +190,5 @@ onMounted(async () => {
 .stage { margin-top: 6px; }
 .line { font-size: 13px; color: #606266; padding: 3px 0; line-height: 1.6; }
 .sub { font-size: 12px; color: #909399; }
+.qc-box { background: #f7f9f7; border-left: 3px solid #67c23a; border-radius: 4px; padding: 6px 8px; margin: 6px 0; }
 </style>

@@ -73,6 +73,21 @@ export class Batch {
   @Column('float', { name: 'defect_rate', default: 0 })
   defectRate: number;
 
+  /** 是否因坏果预警冻结同批次剩余库存 */
+  @Column({ name: 'frozen', default: false })
+  frozen: boolean;
+
+  /** 冻结原因（坏果预警单号等） */
+  @Column({ name: 'freeze_reason', nullable: true })
+  freezeReason: string;
+
+  @Column({ type: 'timestamp', name: 'frozen_at', nullable: true })
+  frozenAt: Date;
+
+  /** 定责为包装承压问题后，后续发货更换的包装方式 */
+  @Column({ name: 'replacement_packaging', nullable: true })
+  replacementPackaging: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

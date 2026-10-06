@@ -1,9 +1,19 @@
 <template>
   <div>
+    <el-alert
+      v-if="overview.openDefectAlerts > 0"
+      type="error" show-icon :closable="false" style="margin-bottom: 12px"
+    >
+      <template #title>
+        有 <b>{{ overview.openDefectAlerts }}</b> 个批次坏果预警处置中，已冻结同批次剩余库存
+        <b>{{ overview.frozenBatches }}</b> 个；客服需优先处理同城市/同线路/同包装用户，
+        <el-button v-if="canViewAlerts" link type="primary" size="small" @click="$router.push('/defect-alerts')">进入坏果预警 →</el-button>
+      </template>
+    </el-alert>
     <el-row :gutter="14">
-      <el-col :span="4" v-for="c in cards" :key="c.label">
+      <el-col :span="3" v-for="c in cards" :key="c.label">
         <el-card shadow="hover" class="kpi">
-          <div class="kpi-icon" :style="{ background: c.color }"><el-icon :size="22"><component :is="c.icon" /></el-icon></div>
+          <div class="kpi-icon" :style="{ background: c.color }"><el-icon :size="20"><component :is="c.icon" /></el-icon></div>
           <div>
             <div class="kpi-num">{{ c.value }}</div>
             <div class="kpi-label">{{ c.label }}</div>
@@ -81,6 +91,7 @@ const batches = ref([]);
 const chainBatch = ref(null);
 
 const canViewRisks = computed(() => ['admin', 'operator', 'warehouse', 'aftersales'].includes(auth.role));
+const canViewAlerts = computed(() => ['admin', 'operator', 'warehouse', 'aftersales'].includes(auth.role));
 
 const cards = computed(() => [
   { label: '商品总数', value: overview.value.productCount ?? '-', icon: 'Goods', color: '#67c23a' },
@@ -89,6 +100,8 @@ const cards = computed(() => [
   { label: '订单 / GMV', value: overview.value.orderCount != null ? `${overview.value.orderCount} / ¥${overview.value.gmv}` : '-', icon: 'Tickets', color: '#e6a23c' },
   { label: '待发货', value: overview.value.pendingTasks ?? '-', icon: 'Van', color: '#909399' },
   { label: '开放风险', value: overview.value.openRisks ?? '-', icon: 'Warning', color: '#f78989' },
+  { label: '冻结批次', value: overview.value.frozenBatches ?? '-', icon: 'Lock', color: '#b56aa8' },
+  { label: '坏果预警', value: overview.value.openDefectAlerts ?? '-', icon: 'AlarmClock', color: '#f56c6c' },
 ]);
 
 function statusText(s) {

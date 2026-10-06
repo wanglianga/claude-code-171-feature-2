@@ -1,15 +1,4 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Get,
-  Injectable,
-  Module,
-  NotFoundException,
-  Param,
-  Post,
-  Query,
-} from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Injectable, Module, NotFoundException, Param, Post, Query } from '@nestjs/common';
 import { InjectRepository, TypeOrmModule } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ShippingTask } from '../../entities/shipping-task.entity';
@@ -17,6 +6,16 @@ import { Order } from '../../entities/order.entity';
 import { Batch } from '../../entities/batch.entity';
 import { Roles } from '../../common/decorators';
 import { RisksService } from '../risks/risks.module';
+import { cityArrivalTemp, transitMaxTemp } from '../../common/logistics';
+
+class ShipDto {
+  outboundPhoto?: string;
+}
+class DeliverDto {
+  arrivalPhoto?: string;
+  arrivalCityTemp?: number;
+  transitMaxTemp?: number;
+}
 
 @Injectable()
 export class ShippingService {
@@ -45,23 +44,37 @@ export class ShippingService {
     return t;
   }
 
-  async ship(id: number) {
+  async ship(id: number, dto?: ShipDto) {
     const t = await this.getTask(id);
     if (t.status !== 'pending') throw new BadRequestException('仅待发货任务可发货');
+    const batch = await this.batches.findOne({ where: { id: t.batchId } });
+    if (batch?.frozen) {
+      throw new BadRequestException(
+        `批次 ${batch.batchNo} 已因坏果预警冻结，暂停发货；若已更换包装并定责，请待解冻后再发`,
+      );
+    }
     t.status = 'shipped';
     t.shippedAt = new Date();
+    if (dto?.outboundPhoto) t.outboundPhoto = dto.outboundPhoto;
     await this.tasks.save(t);
     await this.orders.update(t.orderId, { status: 'shipped' });
     return t;
   }
 
-  async deliver(id: number) {
+  async deliver(id: number, dto?: DeliverDto) {
     const t = await this.getTask(id);
     if (!['shipped', 'in_transit'].includes(t.status)) {
       throw new BadRequestException('任务未在运输中');
     }
     t.status = 'delivered';
     t.deliveredAt = new Date();
+    if (dto?.arrivalPhoto) t.arrivalPhoto = dto.arrivalPhoto;
+    if (dto?.arrivalCityTemp != null) t.arrivalCityTemp = +dto.arrivalCityTemp;
+    if (dto?.transitMaxTemp != null) t.transitMaxTemp = +dto.transitMaxTemp;
+    // 未显式回填时，按城市/温区补齐稳定模拟值（演示用）
+    const order = await this.orders.findOne({ where: { id: t.orderId } });
+    if (t.arrivalCityTemp == null && order) t.arrivalCityTemp = cityArrivalTemp(order.city);
+    if (t.transitMaxTemp == null) t.transitMaxTemp = transitMaxTemp(t.tempZone);
     await this.tasks.save(t);
     await this.orders.update(t.orderId, { status: 'delivered' });
     return t;
@@ -103,14 +116,14 @@ export class ShippingController {
 
   @Post('tasks/:id/ship')
   @Roles('warehouse')
-  ship(@Param('id') id: string) {
-    return this.svc.ship(+id);
+  ship(@Param('id') id: string, @Body() dto?: ShipDto) {
+    return this.svc.ship(+id, dto || {});
   }
 
   @Post('tasks/:id/deliver')
   @Roles('warehouse')
-  deliver(@Param('id') id: string) {
-    return this.svc.deliver(+id);
+  deliver(@Param('id') id: string, @Body() dto?: DeliverDto) {
+    return this.svc.deliver(+id, dto || {});
   }
 
   @Post('tasks/:id/vehicle-late')

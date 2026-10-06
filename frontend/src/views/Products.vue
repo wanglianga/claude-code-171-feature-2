@@ -87,16 +87,20 @@
             <span :style="{ color: row.defectRate >= 0.05 ? '#f56c6c' : '#67c23a' }">{{ (row.defectRate * 100).toFixed(1) }}%</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="90">
+        <el-table-column label="状态" width="110">
           <template #default="{ row }">
             <el-tag size="small" :type="batchTag(row.status)">{{ batchText(row.status) }}</el-tag>
+            <el-tooltip v-if="row.frozen" :content="row.freezeReason || '坏果预警冻结'" placement="top">
+              <el-tag size="small" type="danger" effect="dark" style="margin-left: 4px">冻结</el-tag>
+            </el-tooltip>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="230" fixed="right">
           <template #default="{ row }">
             <el-button size="small" link type="primary" @click="$router.push(`/chain/${row.id}`)">链路</el-button>
-            <el-button v-if="(isFarmer || isOperator) && ['on_sale', 'locked', 'qc_passed'].includes(row.status)" size="small" link type="warning" @click="openReduce(row)">临时少供</el-button>
-            <el-button v-if="isOperator || isWarehouse" size="small" link type="danger" @click="openDefect(row)">坏果上报</el-button>
+            <el-button v-if="row.frozen" size="small" link type="danger" @click="$router.push('/defect-alerts')">坏果预警</el-button>
+            <el-button v-else-if="(isFarmer || isOperator) && ['on_sale', 'locked', 'qc_passed'].includes(row.status)" size="small" link type="warning" @click="openReduce(row)">临时少供</el-button>
+            <el-button v-if="!row.frozen && (isOperator || isWarehouse)" size="small" link type="danger" @click="openDefect(row)">坏果上报</el-button>
           </template>
         </el-table-column>
       </el-table>

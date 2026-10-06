@@ -27,6 +27,30 @@ export class ShippingTask {
   @Column({ name: 'temp_zone' })
   tempZone: string;
 
+  /** 实际使用包装方式（下单时由商品/锁库快照，坏果分析按此维度归因） */
+  @Column({ name: 'packaging_type', nullable: true })
+  packagingType: string;
+
+  /** 物流线路（干线+路由，如 杭州中心仓→上海冷链干线A） */
+  @Column({ name: 'logistics_route', nullable: true })
+  logisticsRoute: string;
+
+  /** 到货城市温度（℃，送达时由仓库/客服回填或对接气象） */
+  @Column('float', { name: 'arrival_city_temp', nullable: true })
+  arrivalCityTemp: number;
+
+  /** 运输途中最高温度（℃，冷链温区记录仪） */
+  @Column('float', { name: 'transit_max_temp', nullable: true })
+  transitMaxTemp: number;
+
+  /** 出库抽检照片 URL（仓库发货前拍摄） */
+  @Column('text', { name: 'outbound_photo', nullable: true })
+  outboundPhoto: string;
+
+  /** 到货照片 URL（送达/用户签收面单与外观） */
+  @Column('text', { name: 'arrival_photo', nullable: true })
+  arrivalPhoto: string;
+
   @Column({ nullable: true })
   carrier: string;
 

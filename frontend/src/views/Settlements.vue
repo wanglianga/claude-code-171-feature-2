@@ -26,8 +26,22 @@
         <el-table-column label="应收(供货价)" width="110">
           <template #default="{ row }">¥{{ row.grossAmount }}</template>
         </el-table-column>
-        <el-table-column label="售后扣减" width="100">
+        <el-table-column label="售后扣减合计" width="100">
           <template #default="{ row }"><span style="color: #f56c6c">-¥{{ row.refundAmount }}</span></template>
+        </el-table-column>
+        <el-table-column label="其中·农户扣赔" width="110">
+          <template #default="{ row }">
+            <el-tooltip content="坏果定责为农户采摘成熟度过高（或多方责任农户份额）时，结算扣除的坏果赔付" placement="top">
+              <span :style="{ color: Number(row.farmerBorneDeduction) > 0 ? '#f56c6c' : '#909399' }">-¥{{ row.farmerBorneDeduction || 0 }}</span>
+            </el-tooltip>
+          </template>
+        </el-table-column>
+        <el-table-column label="其中·平台承担" width="110">
+          <template #default="{ row }">
+            <el-tooltip content="坏果定责为包装承压/物流温区时由平台承担，不扣农户" placement="top">
+              <span :style="{ color: Number(row.platformBorne) > 0 ? '#e6a23c' : '#909399' }">¥{{ row.platformBorne || 0 }}</span>
+            </el-tooltip>
+          </template>
         </el-table-column>
         <el-table-column label="实付" width="110">
           <template #default="{ row }"><b style="color: #67c23a">¥{{ row.netAmount }}</b></template>

@@ -13,21 +13,27 @@ import {
 import { InjectRepository, TypeOrmModule } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { IsInt, IsNotEmpty, IsOptional } from 'class-validator';
-import { Aftersale, AFTERSALE_TYPES } from '../../entities/aftersale.entity';
+import { Aftersale, AFTERSALE_TYPES, DEFECT_SYMPTOMS } from '../../entities/aftersale.entity';
 import { Order } from '../../entities/order.entity';
 import { Batch } from '../../entities/batch.entity';
 import { FeedbackDecision } from '../../entities/feedback-decision.entity';
 import { BrandNotice } from '../../entities/brand-notice.entity';
+import { ShippingTask } from '../../entities/shipping-task.entity';
 import { Roles } from '../../common/decorators';
 import { ReqUser } from '../../common/req-user.decorator';
 import { RisksService } from '../risks/risks.module';
 import { FarmersService } from '../farmers/farmers.module';
+import { DefectAlertsModule, DefectAlertsService } from '../defect-alerts/defect-alerts.module';
 
 class CreateTicketDto {
   @IsInt() orderId: number;
   @IsNotEmpty() type: string;
   @IsNotEmpty() description: string;
   @IsOptional() refundAmount?: number;
+  /** 用户拍照证据 URL，多张逗号分隔 */
+  @IsOptional() evidencePhotos?: string;
+  /** 坏果表象 */
+  @IsOptional() defectSymptom?: string;
 }
 
 class ResolveDto {
@@ -49,8 +55,10 @@ export class AftersalesService {
     @InjectRepository(Batch) private batches: Repository<Batch>,
     @InjectRepository(FeedbackDecision) private decisions: Repository<FeedbackDecision>,
     @InjectRepository(BrandNotice) private notices: Repository<BrandNotice>,
+    @InjectRepository(ShippingTask) private tasks: Repository<ShippingTask>,
     private risks: RisksService,
     private farmersSvc: FarmersService,
+    private defectAlerts: DefectAlertsService,
   ) {}
 
   async create(dto: CreateTicketDto) {
@@ -59,6 +67,11 @@ export class AftersalesService {
     if (!AFTERSALE_TYPES.includes(dto.type)) {
       throw new BadRequestException(`售后类型须为：${AFTERSALE_TYPES.join('/')}`);
     }
+    if (dto.type === '坏果' && dto.defectSymptom && !DEFECT_SYMPTOMS.includes(dto.defectSymptom)) {
+      throw new BadRequestException(`坏果表象须为：${DEFECT_SYMPTOMS.join('/')}`);
+    }
+    // 快照发货维度信息，供坏果按包装/线路/到货温度归因
+    const task = await this.tasks.findOne({ where: { orderId: order.id } });
     const t = this.tickets.create({
       ticketNo: `AS${Date.now()}${Math.floor(Math.random() * 900 + 100)}`,
       orderId: order.id,
@@ -66,6 +79,12 @@ export class AftersalesService {
       type: dto.type,
       description: dto.description,
       refundAmount: (dto.refundAmount || 0) as any,
+      evidencePhotos: dto.evidencePhotos || null,
+      defectSymptom: dto.type === '坏果' ? dto.defectSymptom || null : null,
+      packagingType: task?.packagingType || null,
+      logisticsRoute: task?.logisticsRoute || null,
+      arrivalCityTemp: task?.arrivalCityTemp ?? null,
+      tempZone: task?.tempZone || null,
       status: 'pending',
     });
     return this.tickets.save(t);
@@ -103,24 +122,11 @@ export class AftersalesService {
       await this.orders.update(t.orderId, { status: 'refunded' });
     }
 
-    // 坏果工单 → 重算批次坏果率，超阈值触发风险
+    // 坏果工单 → 重算批次坏果率，达预警线形成坏果预警（自动冻结同批库存/客服优先）
     if (t.type === '坏果') {
       const batch = await this.batches.findOne({ where: { id: t.batchId } });
       if (batch && batch.soldQty > 0) {
-        const defectCount = await this.tickets.count({
-          where: { batchId: t.batchId, type: '坏果', status: 'resolved' },
-        });
-        const rate = defectCount / batch.soldQty;
-        batch.defectRate = Math.round(rate * 10000) / 10000;
-        await this.batches.save(batch);
-        if (rate >= 0.05) {
-          await this.risks.emit(
-            'defect_rising',
-            rate >= 0.1 ? 'critical' : 'warning',
-            `批次 ${batch.batchNo} 坏果率升至 ${(rate * 100).toFixed(1)}%（${defectCount}/${batch.soldQty}），超过预警线`,
-            batch.id,
-          );
-        }
+        await this.defectAlerts.evaluateBatch(batch.id, user);
         await this.farmersSvc.recomputeStats(batch.product.farmerId);
       }
     }
@@ -203,7 +209,8 @@ export class AftersalesController {
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Aftersale, Order, Batch, FeedbackDecision, BrandNotice]),
+    TypeOrmModule.forFeature([Aftersale, Order, Batch, FeedbackDecision, BrandNotice, ShippingTask]),
+    DefectAlertsModule,
   ],
   controllers: [AftersalesController],
   providers: [AftersalesService],

@@ -12,6 +12,7 @@
               <el-radio-button value="rejected">已拒绝</el-radio-button>
             </el-radio-group>
             <el-button size="small" type="primary" style="margin-left: 8px" :icon="Plus" @click="openCreate">新建工单</el-button>
+            <el-button size="small" type="danger" style="margin-left: 8px" @click="$router.push('/defect-alerts')">坏果预警中心</el-button>
           </div>
         </div>
       </template>
@@ -29,6 +30,17 @@
           </template>
         </el-table-column>
         <el-table-column prop="description" label="问题描述" min-width="180" show-overflow-tooltip />
+        <el-table-column label="拍照证据" width="80">
+          <template #default="{ row }">
+            <el-image v-if="row.evidencePhotos" :src="row.evidencePhotos.split(',')[0]" :preview-src-list="row.evidencePhotos.split(',')" fit="cover" class="thumb" />
+            <span v-else class="sub">无</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="优先" width="70">
+          <template #default="{ row }">
+            <el-tag v-if="row.priorityFlag" size="small" type="danger" effect="dark">优先</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="退款" width="80">
           <template #default="{ row }">¥{{ row.refundAmount }}</template>
         </el-table-column>
@@ -85,6 +97,20 @@
             <el-option v-for="t in ['坏果', '少发', '物流延误', '地址错误', '用户拒收', '口味不符']" :key="t" :value="t" :label="t" />
           </el-select>
         </el-form-item>
+        <template v-if="createForm.type === '坏果'">
+          <el-form-item label="坏果表象" required>
+            <el-select v-model="createForm.defectSymptom" style="width: 100%" placeholder="区分压伤/过熟/霉变等，用于责任归因">
+              <el-option v-for="s in ['压伤软烂', '磕碰伤', '过熟软烂', '霉变', '冻伤', '脱水发皱']" :key="s" :value="s" :label="s" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="拍照证据">
+            <el-select v-model="createForm.evidenceKey" style="width: 100%" placeholder="模拟用户上传照片（可选）" clearable>
+              <el-option value="user-crush.svg" label="压伤/磕碰开箱照" />
+              <el-option value="user-overripe.svg" label="过熟软烂流汁照" />
+            </el-select>
+            <el-image v-if="createForm.evidenceKey" :src="`/api/evidence/${createForm.evidenceKey}`" fit="cover" class="evidence-preview" />
+          </el-form-item>
+        </template>
         <el-form-item label="问题描述" required><el-input v-model="createForm.description" type="textarea" :rows="2" /></el-form-item>
         <el-form-item label="退款金额"><el-input-number v-model="createForm.refundAmount" :min="0" :precision="2" style="width: 100%" /></el-form-item>
       </el-form>
@@ -96,6 +122,8 @@
 
     <!-- 处理工单 -->
     <el-dialog v-model="resolveDlg" :title="`处理工单 ${current?.ticketNo || ''}`" width="440px">
+      <el-alert v-if="current?.type === '坏果'" type="warning" :closable="false" style="margin-bottom: 10px"
+        title="坏果工单处理后将重算批次坏果率，达到 5% 自动形成坏果预警、冻结同批次剩余库存并生成客服优先队列" />
       <el-form label-width="90px">
         <el-form-item label="处理结果">
           <el-radio-group v-model="resolveForm.status">
@@ -160,7 +188,7 @@ const feedbackDlg = ref(false);
 const current = ref(null);
 const orderOptions = ref([]);
 
-const createForm = reactive({ orderId: null, type: '坏果', description: '', refundAmount: 0 });
+const createForm = reactive({ orderId: null, type: '坏果', description: '', refundAmount: 0, defectSymptom: '压伤软烂', evidenceKey: '' });
 const resolveForm = reactive({ status: 'resolved', refundAmount: 0, resolution: '' });
 const feedbackForm = reactive({ decisionType: 'reduce_presale', decision: '' });
 
@@ -186,13 +214,16 @@ async function searchOrders(kw) {
 
 function openCreate() {
   searchOrders();
+  Object.assign(createForm, { orderId: null, type: '坏果', description: '', refundAmount: 0, defectSymptom: '压伤软烂', evidenceKey: '' });
   createDlg.value = true;
 }
 async function create() {
   if (!createForm.orderId || !createForm.description) return ElMessage.warning('请选择订单并填写描述');
+  if (createForm.type === '坏果' && !createForm.defectSymptom) return ElMessage.warning('请选择坏果表象');
   saving.value = true;
   try {
-    await request.post('/aftersales', createForm);
+    const payload = { ...createForm, evidenceKey: undefined, evidencePhotos: createForm.evidenceKey ? `/api/evidence/${createForm.evidenceKey}` : undefined };
+    await request.post('/aftersales', payload);
     ElMessage.success('工单已创建');
     createDlg.value = false;
     load();
@@ -238,4 +269,6 @@ onMounted(load);
 <style scoped>
 .head { display: flex; justify-content: space-between; align-items: center; }
 .sub { font-size: 12px; color: #909399; }
+.thumb { width: 56px; height: 42px; border-radius: 4px; }
+.evidence-preview { width: 160px; margin-top: 6px; border-radius: 6px; border: 1px solid #ebeef5; }
 </style>

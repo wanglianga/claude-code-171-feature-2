@@ -1,6 +1,6 @@
 import { Controller, Get, Injectable, Module, NotFoundException, Param } from '@nestjs/common';
 import { InjectRepository, TypeOrmModule } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Farmer } from '../../entities/farmer.entity';
 import { Product } from '../../entities/product.entity';
 import { Batch } from '../../entities/batch.entity';
@@ -13,6 +13,8 @@ import { Aftersale } from '../../entities/aftersale.entity';
 import { Settlement } from '../../entities/settlement.entity';
 import { RiskEvent } from '../../entities/risk-event.entity';
 import { FeedbackDecision } from '../../entities/feedback-decision.entity';
+import { DefectAlert } from '../../entities/defect-alert.entity';
+import { QcReview } from '../../entities/qc-review.entity';
 import { Roles } from '../../common/decorators';
 
 @Injectable()
@@ -30,10 +32,12 @@ export class AnalyticsService {
     @InjectRepository(Settlement) private settlements: Repository<Settlement>,
     @InjectRepository(RiskEvent) private risks: Repository<RiskEvent>,
     @InjectRepository(FeedbackDecision) private decisions: Repository<FeedbackDecision>,
+    @InjectRepository(DefectAlert) private defectAlerts: Repository<DefectAlert>,
+    @InjectRepository(QcReview) private qcReviews: Repository<QcReview>,
   ) {}
 
   async overview() {
-    const [productCount, batchCount, liveCount, orderAgg, ticketCount, openRisks, pendingTasks] =
+    const [productCount, batchCount, liveCount, orderAgg, ticketCount, openRisks, pendingTasks, frozenBatches, openDefectAlerts] =
       await Promise.all([
         this.products.count(),
         this.batches.count(),
@@ -46,6 +50,8 @@ export class AnalyticsService {
         this.aftersales.count({ where: { status: 'pending' } }),
         this.risks.count({ where: { status: 'open' } }),
         this.tasks.count({ where: { status: 'pending' } }),
+        this.batches.count({ where: { frozen: true } }),
+        this.defectAlerts.count({ where: { status: In(['open', 'reviewing', 'responsibility_set']) } }),
       ]);
     return {
       productCount,
@@ -56,6 +62,8 @@ export class AnalyticsService {
       pendingTickets: ticketCount,
       openRisks,
       pendingTasks,
+      frozenBatches,
+      openDefectAlerts,
     };
   }
 
@@ -225,7 +233,7 @@ export class AnalyticsService {
   async batchChain(batchId: number) {
     const batch = await this.batches.findOne({ where: { id: batchId } });
     if (!batch) throw new NotFoundException('批次不存在');
-    const [selections, livestreams, locks, orders, tasks, tickets, settlements, risks, decisions] =
+    const [selections, livestreams, locks, orders, tasks, tickets, settlements, risks, decisions, defectAlerts, qcReviews] =
       await Promise.all([
         this.selections.find({ where: { batchId }, order: { id: 'ASC' } }),
         this.livestreams.find({ where: { batchId }, order: { id: 'ASC' } }),
@@ -236,6 +244,8 @@ export class AnalyticsService {
         this.settlements.find({ where: { batchId }, order: { id: 'ASC' } }),
         this.risks.find({ where: { batchId }, order: { id: 'ASC' } }),
         this.decisions.find({ where: { batchId }, order: { id: 'ASC' } }),
+        this.defectAlerts.find({ where: { batchId }, order: { id: 'DESC' } }),
+        this.qcReviews.find({ where: { batchId }, order: { id: 'DESC' } }),
       ]);
     const gmv = orders.reduce((s, o) => s + Number(o.amount), 0);
     const refund = tickets
@@ -268,6 +278,8 @@ export class AnalyticsService {
       settlements,
       risks,
       decisions,
+      defectAlerts,
+      qcReviews,
     };
   }
 }
@@ -310,6 +322,7 @@ export class AnalyticsController {
     TypeOrmModule.forFeature([
       Farmer, Product, Batch, Selection, Livestream, InventoryLock,
       Order, ShippingTask, Aftersale, Settlement, RiskEvent, FeedbackDecision,
+      DefectAlert, QcReview,
     ]),
   ],
   controllers: [AnalyticsController],

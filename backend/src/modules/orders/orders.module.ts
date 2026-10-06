@@ -20,6 +20,7 @@ import { ShippingTask } from '../../entities/shipping-task.entity';
 import { InventoryLock } from '../../entities/inventory-lock.entity';
 import { Roles } from '../../common/decorators';
 import { RisksService } from '../risks/risks.module';
+import { cityArrivalTemp, logisticsRoute, transitMaxTemp } from '../../common/logistics';
 
 class OrderDto {
   @IsInt() livestreamId: number;
@@ -54,6 +55,11 @@ export class OrdersService {
     if (!ls) throw new NotFoundException('直播场次不存在');
     if (ls.status !== 'live') throw new BadRequestException('该场次未在直播中');
     const batch = await this.batches.findOne({ where: { id: ls.batchId } });
+    if (batch.frozen) {
+      throw new BadRequestException(
+        `批次 ${batch.batchNo} 已因坏果预警冻结剩余库存，暂停下单发货（${batch.freezeReason || '待质检定责'}）`,
+      );
+    }
     if (dto.quantity > batch.availableQty + 0 && ls.actualSales + dto.quantity > 0) {
       // 允许超卖发生（真实业务场景），但触发风险事件
     }
@@ -105,12 +111,20 @@ export class OrdersService {
       where: { livestreamId: ls.id },
       order: { id: 'DESC' },
     });
+    const warehouseName = lock ? lock.warehouseName : '县域中心仓';
+    const packagingType =
+      (lock && lock.packagingMaterial) || batch.product.packagingType || '普通纸箱';
+    const route = logisticsRoute(warehouseName, dto.city, batch.product.tempZone);
     const task = this.tasks.create({
       taskNo: `T${Date.now()}${Math.floor(Math.random() * 9000 + 1000)}`,
       orderId: saved.id,
       batchId: ls.batchId,
-      warehouseName: lock ? lock.warehouseName : '县域中心仓',
+      warehouseName,
       tempZone: batch.product.tempZone,
+      packagingType: batch.replacementPackaging || packagingType,
+      logisticsRoute: route,
+      arrivalCityTemp: cityArrivalTemp(dto.city),
+      transitMaxTemp: transitMaxTemp(batch.product.tempZone),
       carrier: batch.product.coldChainRequired ? '顺丰冷运' : '中通快递',
       coldChainVehicle: batch.product.coldChainRequired
         ? `冷链车-${batch.product.tempZone === '冷冻' ? 'F' : 'C'}${100 + (saved.id % 50)}`

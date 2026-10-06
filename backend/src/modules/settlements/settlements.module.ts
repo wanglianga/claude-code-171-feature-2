@@ -48,15 +48,32 @@ export class SettlementsService {
     const tickets = await this.aftersales.find({
       where: { batchId: batch.id, status: 'resolved' },
     });
-    const refund = tickets.reduce((s, t) => s + Number(t.refundAmount || 0), 0);
-    const net = Math.max(0, gross - refund);
+    // 分责：坏果工单按质检定责的农户承担额扣款（采摘成熟度过高→农户；包装承压/物流→平台）；
+    // 未对该坏果工单定责（farmerBorne 为空）或非坏果类售后，维持从农户结算扣减。
+    let farmerDeduction = 0;
+    let farmerBorneDeduction = 0;
+    let platformBorne = 0;
+    for (const t of tickets) {
+      const refund = Number(t.refundAmount || 0);
+      if (t.type === '坏果' && t.farmerBorne != null) {
+        const borne = Number(t.farmerBorne || 0);
+        farmerBorneDeduction += borne;
+        platformBorne += Math.max(0, refund - borne);
+        farmerDeduction += borne;
+      } else {
+        farmerDeduction += refund;
+      }
+    }
+    const net = Math.max(0, gross - farmerDeduction);
     const rec = this.settlements.create({
       farmerId: batch.product.farmerId,
       batchId: batch.id,
       livestreamId: ls.id,
       orderCount: orders.length,
       grossAmount: gross.toFixed(2) as any,
-      refundAmount: refund.toFixed(2) as any,
+      refundAmount: farmerDeduction.toFixed(2) as any,
+      farmerBorneDeduction: farmerBorneDeduction.toFixed(2) as any,
+      platformBorne: platformBorne.toFixed(2) as any,
       netAmount: net.toFixed(2) as any,
       status: 'pending',
     });
