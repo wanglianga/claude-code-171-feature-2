@@ -14,6 +14,7 @@ import { OrdersModule } from './modules/orders/orders.module';
 import { ShippingModule } from './modules/shipping/shipping.module';
 import { AftersalesModule } from './modules/aftersales/aftersales.module';
 import { SettlementsModule } from './modules/settlements/settlements.module';
+import { DefectAlertsModule } from './modules/defect-alerts/defect-alerts.module';
 import { NoticesModule } from './modules/notices/notices.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { SeedModule } from './seed/seed.module';
@@ -46,6 +47,7 @@ import { SeedModule } from './seed/seed.module';
     ShippingModule,
     AftersalesModule,
     SettlementsModule,
+    DefectAlertsModule,
     NoticesModule,
     AnalyticsModule,
     SeedModule,

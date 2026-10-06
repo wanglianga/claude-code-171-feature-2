@@ -54,6 +54,11 @@ export class OrdersService {
     if (!ls) throw new NotFoundException('直播场次不存在');
     if (ls.status !== 'live') throw new BadRequestException('该场次未在直播中');
     const batch = await this.batches.findOne({ where: { id: ls.batchId } });
+    if (batch.frozenByAlert) {
+      throw new BadRequestException(
+        `批次 ${batch.batchNo} 已因坏果预警冻结剩余库存，暂停发货下单，待复盘结案`,
+      );
+    }
     if (dto.quantity > batch.availableQty + 0 && ls.actualSales + dto.quantity > 0) {
       // 允许超卖发生（真实业务场景），但触发风险事件
     }
@@ -115,11 +120,20 @@ export class OrdersService {
       coldChainVehicle: batch.product.coldChainRequired
         ? `冷链车-${batch.product.tempZone === '冷冻' ? 'F' : 'C'}${100 + (saved.id % 50)}`
         : null,
+      logisticsRoute: this.routeForCity(dto.city, batch.product.tempZone),
       promiseText: ls.promiseText || '坏果包赔、48 小时发货',
       status: 'pending',
     });
     await this.tasks.save(task);
     return saved;
+  }
+
+  /** 按到货城市与温区模拟分配物流线路（坏果按线路归因） */
+  private routeForCity(city: string, tempZone: string) {
+    const east = ['上海市', '苏州市', '宁波市', '杭州市'];
+    const north = ['南京市', '合肥市'];
+    const line = east.includes(city) ? '华东冷链A线' : north.includes(city) ? '华东冷链B线' : '华中冷链C线';
+    return tempZone === '常温' ? line.replace('冷链', '普货') : line;
   }
 
   /** 模拟直播爆单：批量生成订单（演示用） */

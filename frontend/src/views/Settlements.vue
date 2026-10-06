@@ -26,10 +26,22 @@
         <el-table-column label="应收(供货价)" width="110">
           <template #default="{ row }">¥{{ row.grossAmount }}</template>
         </el-table-column>
-        <el-table-column label="售后扣减" width="100">
-          <template #default="{ row }"><span style="color: #f56c6c">-¥{{ row.refundAmount }}</span></template>
+        <el-table-column label="售后退款总额" width="110">
+          <template #default="{ row }">¥{{ row.refundAmount }}</template>
         </el-table-column>
-        <el-table-column label="实付" width="110">
+        <el-table-column label="农户承担(扣赔付)" width="130">
+          <template #default="{ row }">
+            <span style="color: #f56c6c">-¥{{ row.farmerDeduction ?? row.refundAmount }}</span>
+            <div class="sub">采摘成熟度过高等</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="平台/物流承担" width="120">
+          <template #default="{ row }">
+            <span class="sub">¥{{ platformBorne(row) }}</span>
+            <div class="sub">包装/温区等</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="实付农户" width="110">
           <template #default="{ row }"><b style="color: #67c23a">¥{{ row.netAmount }}</b></template>
         </el-table-column>
         <el-table-column label="状态" width="90">
@@ -79,6 +91,12 @@ async function pay(row) {
   await request.post(`/settlements/${row.id}/pay`);
   ElMessage.success('已打款');
   load();
+}
+
+function platformBorne(row) {
+  const total = Number(row.refundAmount || 0);
+  const farmer = Number(row.farmerDeduction != null ? row.farmerDeduction : row.refundAmount || 0);
+  return Math.max(0, total - farmer).toFixed(2);
 }
 
 onMounted(load);

@@ -1,5 +1,16 @@
 <template>
   <div>
+    <el-alert
+      v-if="canViewRisks && overview.openDefectAlerts > 0"
+      type="error" show-icon :closable="false" style="margin-bottom: 12px"
+      @click="$router.push('/defect-alerts')"
+    >
+      <template #title>
+        <span style="cursor: pointer; font-weight: 600">
+          有 {{ overview.openDefectAlerts }} 条坏果率异常预警：同批次剩余库存已冻结，请客服优先跟进同城/同线/同包装用户、质检尽快复盘定责 →
+        </span>
+      </template>
+    </el-alert>
     <el-row :gutter="14">
       <el-col :span="4" v-for="c in cards" :key="c.label">
         <el-card shadow="hover" class="kpi">

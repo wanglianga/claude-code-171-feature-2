@@ -31,6 +31,13 @@ export class Settlement {
   @Column('decimal', { name: 'refund_amount', precision: 12, scale: 2, default: 0 })
   refundAmount: number;
 
+  /**
+   * 其中经坏果定责、由农户承担（采摘成熟度过高等）的赔付扣减；
+   * refundAmount - farmerDeduction 为平台/物流/包装环节承担，不扣农户
+   */
+  @Column('decimal', { name: 'farmer_deduction', precision: 12, scale: 2, default: 0 })
+  farmerDeduction: number;
+
   /** 实付金额 */
   @Column('decimal', { name: 'net_amount', precision: 12, scale: 2 })
   netAmount: number;

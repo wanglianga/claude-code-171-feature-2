@@ -29,6 +29,14 @@
           </template>
         </el-table-column>
         <el-table-column prop="description" label="问题描述" min-width="180" show-overflow-tooltip />
+        <el-table-column label="坏果证据" width="120">
+          <template #default="{ row }">
+            <template v-if="row.type === '坏果'">
+              <el-tag v-if="row.damageForm" size="small" type="danger" effect="plain">{{ row.damageForm }}</el-tag>
+              <div class="sub">{{ row.arrivalTemp != null ? `${row.arrivalTemp}℃` : '' }}{{ row.photoEvidence ? ' · 有照片' : '' }}</div>
+            </template>
+          </template>
+        </el-table-column>
         <el-table-column label="退款" width="80">
           <template #default="{ row }">¥{{ row.refundAmount }}</template>
         </el-table-column>
@@ -86,6 +94,18 @@
           </el-select>
         </el-form-item>
         <el-form-item label="问题描述" required><el-input v-model="createForm.description" type="textarea" :rows="2" /></el-form-item>
+        <template v-if="createForm.type === '坏果'">
+          <el-form-item label="损伤形态">
+            <el-select v-model="createForm.damageForm" style="width: 100%" placeholder="选择到货果损形态">
+              <el-option v-for="d in ['磕碰压伤', '过熟软烂', '霉变异味', '失水皱缩', '整箱完好']" :key="d" :value="d" :label="d" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="坏果数量"><el-input-number v-model="createForm.defectQty" :min="0" style="width: 100%" /></el-form-item>
+          <el-form-item label="到货气温℃"><el-input-number v-model="createForm.arrivalTemp" :min="-20" :max="50" style="width: 100%" /></el-form-item>
+          <el-form-item label="拍照证据">
+            <el-input v-model="createForm.photoEvidence" type="textarea" :rows="2" placeholder="用户上传照片地址，多张用英文逗号分隔（演示可填 OSS/arrival/xx.jpg）" />
+          </el-form-item>
+        </template>
         <el-form-item label="退款金额"><el-input-number v-model="createForm.refundAmount" :min="0" :precision="2" style="width: 100%" /></el-form-item>
       </el-form>
       <template #footer>
@@ -160,7 +180,7 @@ const feedbackDlg = ref(false);
 const current = ref(null);
 const orderOptions = ref([]);
 
-const createForm = reactive({ orderId: null, type: '坏果', description: '', refundAmount: 0 });
+const createForm = reactive({ orderId: null, type: '坏果', description: '', refundAmount: 0, photoEvidence: '', damageForm: '', arrivalTemp: null, defectQty: 0 });
 const resolveForm = reactive({ status: 'resolved', refundAmount: 0, resolution: '' });
 const feedbackForm = reactive({ decisionType: 'reduce_presale', decision: '' });
 

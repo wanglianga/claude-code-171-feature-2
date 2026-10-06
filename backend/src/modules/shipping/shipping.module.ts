@@ -90,6 +90,21 @@ export class ShippingService {
     await this.tasks.save(t);
     return t;
   }
+
+  /**
+   * 出库证据登记：装车照片 + 物流线路 + 运输途中最高温度，
+   * 供坏果复盘时与用户到货照片、到货城市温度、物流温区比对
+   */
+  async outboundEvidence(
+    id: number,
+    dto: { outboundPhoto?: string; logisticsRoute?: string; transitMaxTemp?: number },
+  ) {
+    const t = await this.getTask(id);
+    if (dto.outboundPhoto != null) t.outboundPhoto = dto.outboundPhoto;
+    if (dto.logisticsRoute != null) t.logisticsRoute = dto.logisticsRoute;
+    if (dto.transitMaxTemp != null) t.transitMaxTemp = dto.transitMaxTemp as any;
+    return this.tasks.save(t);
+  }
 }
 
 @Controller('shipping')
@@ -123,6 +138,15 @@ export class ShippingController {
   @Roles('warehouse')
   exception(@Param('id') id: string, @Body() body: { note?: string }) {
     return this.svc.exception(+id, body?.note || '');
+  }
+
+  @Post('tasks/:id/outbound-evidence')
+  @Roles('warehouse')
+  outboundEvidence(
+    @Param('id') id: string,
+    @Body() body: { outboundPhoto?: string; logisticsRoute?: string; transitMaxTemp?: number },
+  ) {
+    return this.svc.outboundEvidence(+id, body || {});
   }
 }
 

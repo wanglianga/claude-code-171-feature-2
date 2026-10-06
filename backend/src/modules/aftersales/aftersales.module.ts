@@ -22,12 +22,21 @@ import { Roles } from '../../common/decorators';
 import { ReqUser } from '../../common/req-user.decorator';
 import { RisksService } from '../risks/risks.module';
 import { FarmersService } from '../farmers/farmers.module';
+import { DefectAlertsModule, DefectAlertsService } from '../defect-alerts/defect-alerts.module';
 
 class CreateTicketDto {
   @IsInt() orderId: number;
   @IsNotEmpty() type: string;
   @IsNotEmpty() description: string;
   @IsOptional() refundAmount?: number;
+  /** 用户拍照证据（多个地址逗号分隔） */
+  @IsOptional() photoEvidence?: string;
+  /** 损伤形态：磕碰压伤/过熟软烂/霉变异味/失水皱缩 */
+  @IsOptional() damageForm?: string;
+  /** 到货城市当天气温 ℃ */
+  @IsOptional() arrivalTemp?: number;
+  /** 坏果数量 */
+  @IsOptional() defectQty?: number;
 }
 
 class ResolveDto {
@@ -51,6 +60,7 @@ export class AftersalesService {
     @InjectRepository(BrandNotice) private notices: Repository<BrandNotice>,
     private risks: RisksService,
     private farmersSvc: FarmersService,
+    private defectAlerts: DefectAlertsService,
   ) {}
 
   async create(dto: CreateTicketDto) {
@@ -66,6 +76,10 @@ export class AftersalesService {
       type: dto.type,
       description: dto.description,
       refundAmount: (dto.refundAmount || 0) as any,
+      photoEvidence: dto.photoEvidence || null,
+      damageForm: dto.type === '坏果' ? dto.damageForm || null : null,
+      arrivalTemp: dto.arrivalTemp != null ? (dto.arrivalTemp as any) : null,
+      defectQty: dto.defectQty != null ? (dto.defectQty as any) : null,
       status: 'pending',
     });
     return this.tickets.save(t);
@@ -120,6 +134,8 @@ export class AftersalesService {
             `批次 ${batch.batchNo} 坏果率升至 ${(rate * 100).toFixed(1)}%（${defectCount}/${batch.soldQty}），超过预警线`,
             batch.id,
           );
+          // 坏果赔付集中出现 → 形成坏果预警：冻结同批剩余库存 + 五维归因 + 客服优先名单
+          await this.defectAlerts.triggerForBatch(batch.id);
         }
         await this.farmersSvc.recomputeStats(batch.product.farmerId);
       }
@@ -204,6 +220,7 @@ export class AftersalesController {
 @Module({
   imports: [
     TypeOrmModule.forFeature([Aftersale, Order, Batch, FeedbackDecision, BrandNotice]),
+    DefectAlertsModule,
   ],
   controllers: [AftersalesController],
   providers: [AftersalesService],

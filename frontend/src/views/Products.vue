@@ -87,9 +87,10 @@
             <span :style="{ color: row.defectRate >= 0.05 ? '#f56c6c' : '#67c23a' }">{{ (row.defectRate * 100).toFixed(1) }}%</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="90">
+        <el-table-column label="状态" width="110">
           <template #default="{ row }">
             <el-tag size="small" :type="batchTag(row.status)">{{ batchText(row.status) }}</el-tag>
+            <el-tag v-if="row.frozenByAlert" size="small" type="danger" effect="dark" style="margin-left: 2px">坏果冻结</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="230" fixed="right">

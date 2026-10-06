@@ -73,6 +73,14 @@ export class Batch {
   @Column('float', { name: 'defect_rate', default: 0 })
   defectRate: number;
 
+  /** 是否因坏果预警冻结同批次剩余库存（冻结后不可继续下单/锁库，已售正常发货） */
+  @Column({ name: 'frozen_by_alert', default: false })
+  frozenByAlert: boolean;
+
+  /** 触发冻结的坏果预警 ID（可空） */
+  @Column({ name: 'frozen_alert_id', nullable: true })
+  frozenAlertId: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

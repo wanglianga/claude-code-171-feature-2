@@ -11,6 +11,7 @@ export const RISK_TYPES: Record<string, string> = {
   report_expired: '检测报告过期',
   coldchain_late: '冷链车晚到',
   defect_rising: '同批次坏果率升高',
+  defect_alert: '坏果率异常预警（已冻结同批库存）',
   promise_mismatch: '主播承诺与规格不符',
 };
 

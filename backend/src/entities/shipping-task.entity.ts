@@ -34,6 +34,18 @@ export class ShippingTask {
   @Column({ name: 'cold_chain_vehicle', nullable: true })
   coldChainVehicle: string;
 
+  /** 物流线路（如：华东冷链干线·杭州线），坏果按线路归因 */
+  @Column({ name: 'logistics_route', nullable: true })
+  logisticsRoute: string;
+
+  /** 出库装车照片地址（仓库出库时拍摄，坏果复盘与到货照片比对） */
+  @Column('text', { name: 'outbound_photo', nullable: true })
+  outboundPhoto: string;
+
+  /** 运输途中记录的最高温度（℃），用于温区异常判定 */
+  @Column('float', { name: 'transit_max_temp', nullable: true })
+  transitMaxTemp: number;
+
   /** 冷链车是否晚到 */
   @Column({ name: 'vehicle_late', default: false })
   vehicleLate: boolean;

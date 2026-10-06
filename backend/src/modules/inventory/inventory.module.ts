@@ -42,6 +42,9 @@ export class InventoryService {
       throw new BadRequestException(`场次状态 ${ls.status} 不可锁库`);
     }
     const batch = await this.batches.findOne({ where: { id: ls.batchId } });
+    if (batch.frozenByAlert) {
+      throw new BadRequestException(`批次 ${batch.batchNo} 已因坏果预警冻结，暂停锁库与后续发货`);
+    }
     if (dto.lockedQty > batch.availableQty) {
       throw new BadRequestException(`可售库存不足：仅剩 ${batch.availableQty} 件`);
     }

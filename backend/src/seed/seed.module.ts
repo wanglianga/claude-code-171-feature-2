@@ -16,6 +16,12 @@ import { Settlement } from '../entities/settlement.entity';
 import { RiskEvent } from '../entities/risk-event.entity';
 import { BrandNotice } from '../entities/brand-notice.entity';
 import { FeedbackDecision } from '../entities/feedback-decision.entity';
+import { DefectAlert } from '../entities/defect-alert.entity';
+import { DefectAlertsService } from '../modules/defect-alerts/defect-alerts.module';
+import { DefectAlertsModule } from '../modules/defect-alerts/defect-alerts.module';
+import { SettlementsModule } from '../modules/settlements/settlements.module';
+import { SettlementsService } from '../modules/settlements/settlements.module';
+import { FarmersService } from '../modules/farmers/farmers.module';
 
 const CITIES = ['杭州市', '上海市', '南京市', '合肥市', '苏州市', '宁波市', '武汉市', '长沙市'];
 const SURNAMES = ['王', '李', '张', '刘', '陈', '杨', '赵', '黄', '周', '吴', '徐', '孙'];
@@ -40,6 +46,10 @@ export class SeedService implements OnApplicationBootstrap {
     @InjectRepository(RiskEvent) private risks: Repository<RiskEvent>,
     @InjectRepository(BrandNotice) private notices: Repository<BrandNotice>,
     @InjectRepository(FeedbackDecision) private decisions: Repository<FeedbackDecision>,
+    @InjectRepository(DefectAlert) private defectAlerts: Repository<DefectAlert>,
+    private defectAlertsSvc: DefectAlertsService,
+    private settlementsSvc: SettlementsService,
+    private farmersSvc: FarmersService,
   ) {}
 
   async onApplicationBootstrap() {
@@ -274,6 +284,127 @@ export class SeedService implements OnApplicationBootstrap {
       this.decisions.create({ aftersaleId: savedTickets[18].id, batchId: b5.id, decisionType: 'drop_farmer', decision: '刘记腊味坊暂停排播一场，待复检报告与整改说明后评估', createdBy: ops.id }),
       this.decisions.create({ aftersaleId: savedTickets[0].id, batchId: b1.id, decisionType: 'reduce_presale', decision: '苹果下一场预售量由 200 下调至 180，并增加出库抽检比例至 10%', createdBy: users[7].id }),
     ]);
+
+    // ---------- 草莓批次坏果集中场景（坏果率异常预警） ----------
+    await this.seedStrawberry(users, ops);
+  }
+
+  /**
+   * 奶油草莓批次 B20261005-ST-01：120 单已发出，武汉同城市/同线路集中出现坏果赔付，
+   * 包装为低耐压瓦楞纸箱、用户照片多为磕碰压伤。自动形成坏果预警并冻结剩余 80 件库存。
+   */
+  private async seedStrawberry(users: User[], ops: User) {
+    const f1 = await this.farmers.findOne({ where: { name: '青山果园' } });
+    const product = await this.products.save(
+      this.products.create({
+        name: '高山奶油草莓', category: '水果', origin: '青云山乡高架草莓大棚', spec: '1kg/盒 24枚大果', unit: '盒',
+        shelfLifeDays: 3, coldChainRequired: true, tempZone: '冷藏',
+        packagingType: '普通瓦楞纸箱（单格）', pressureResistance: '低',
+        description: '八成熟采摘、奶油香味浓，极易磕碰，须全程冷藏 0-4℃', status: 'approved', farmerId: f1.id,
+      }),
+    );
+    const batch = await this.batches.save(
+      this.batches.create({
+        batchNo: 'B20261005-ST-01', productId: product.id, quantity: 200, availableQty: 80, soldQty: 120,
+        harvestDate: '2026-10-04', harvestWindowEnd: '2026-10-12', supplyPrice: 18,
+        testReportNo: 'JC-2026-1003', testReportExpiry: '2026-11-15', livestreamAvailable: true,
+        status: 'on_sale', defectRate: 0.1167,
+      }),
+    );
+    const live = await this.livestreams.save(
+      this.livestreams.create({
+        title: '高山奶油草莓专场', batchId: batch.id, anchorName: '主播小云',
+        scriptSummary: '大棚现摘连线+糖度实测+冷链发货实拍', promiseText: '现摘现发、坏果包赔、全程冷藏48小时达',
+        price: 29.9, couponAmount: 5, estimatedSales: 120, actualSales: 120,
+        scheduledAt: new Date('2026-10-05T19:30:00'), status: 'live', sampleTasteDone: true, createdBy: ops.id,
+      }),
+    );
+    await this.locks.save(
+      this.locks.create({ livestreamId: live.id, batchId: batch.id, lockedQty: 120, packagingMaterial: '普通瓦楞纸箱（单格）', packagingQty: 130, warehouseName: '县域中心仓', status: 'consumed' }),
+    );
+
+    // 120 单：前 14 单武汉（华中C线，全部坏果），15 单长沙（同 C 线，未报损→同线路客服名单），其余华东 A/B 线
+    const OTHER_CITIES = ['杭州市', '上海市', '南京市', '合肥市', '苏州市', '宁波市'];
+    const routeOf = (city: string) =>
+      ['上海市', '苏州市', '宁波市', '杭州市'].includes(city) ? '华东冷链A线'
+        : ['南京市', '合肥市'].includes(city) ? '华东冷链B线' : '华中冷链C线';
+    const cityOf = (i: number) =>
+      i < 14 ? '武汉市' : i < 29 ? '长沙市' : OTHER_CITIES[i % OTHER_CITIES.length];
+    const orders: Order[] = [];
+    for (let i = 0; i < 120; i++) {
+      const city = cityOf(i);
+      const name = SURNAMES[i % SURNAMES.length] + GIVEN[(i * 7) % GIVEN.length];
+      orders.push(this.orders.create({
+        orderNo: this.no('O'), livestreamId: live.id, batchId: batch.id,
+        customerName: name, phone: `138${String(20000000 + i * 139).slice(0, 8)}`,
+        city, address: `${city}草莓巷${i + 1}号`, quantity: 1,
+        unitPrice: 29.9, amount: 24.9, status: 'delivered',
+      }));
+    }
+    const savedOrders = await this.orders.save(orders);
+    await this.orders.query('UPDATE orders SET created_at = $1 WHERE livestream_id = $2', ['2026-10-05T20:00:00', live.id]);
+
+    const tasks: ShippingTask[] = savedOrders.map((o, i) => {
+      const isWuhan = i < 14;
+      const late = isWuhan && i < 2; // 前 2 单武汉冷链车晚到
+      return this.tasks.create({
+        taskNo: this.no('T'), orderId: o.id, batchId: batch.id, warehouseName: '县域中心仓',
+        tempZone: '冷藏', carrier: '顺丰冷运',
+        coldChainVehicle: `冷链车-C${50 + (i % 8)}`,
+        logisticsRoute: routeOf(o.city),
+        outboundPhoto: `OSS/outbound/ST01/T${String(i + 1).padStart(3, '0')}.jpg`,
+        transitMaxTemp: isWuhan && i >= 12 ? 12.5 : 6 + (i % 3), // 后 2 单武汉脱冷超温
+        vehicleLate: late,
+        promiseText: '坏果包赔、全程冷藏48小时达',
+        status: 'delivered', shippedAt: new Date('2026-10-05T21:30:00'), deliveredAt: new Date('2026-10-06T11:00:00'),
+      });
+    });
+    await this.tasks.save(tasks);
+
+    // 武汉 14 单全部坏果：10 磕碰压伤（包装承压）+ 3 过熟软烂（采摘成熟度）+ 1 霉变
+    const forms = ['磕碰压伤', '磕碰压伤', '过熟软烂', '磕碰压伤', '磕碰压伤', '霉变异味', '磕碰压伤', '过熟软烂', '磕碰压伤', '磕碰压伤', '磕碰压伤', '过熟软烂', '磕碰压伤', '磕碰压伤'];
+    const descs: Record<string, string> = {
+      磕碰压伤: '开箱盒格塌陷，草莓被压扁出汁，外箱有明显压痕',
+      过熟软烂: '果子通体暗红过熟，到手即软烂流汁',
+      霉变异味: '盒内已有白毛霉变并散发发酵味',
+    };
+    const tickets: Aftersale[] = savedOrders.slice(0, 14).map((o, k) =>
+      this.aftersales.create({
+        ticketNo: this.no('AS'), orderId: o.id, batchId: batch.id, type: '坏果',
+        description: descs[forms[k]],
+        photoEvidence: `OSS/arrival/ST01/U${k + 1}-box.jpg,OSS/arrival/ST01/U${k + 1}-fruit.jpg`,
+        damageForm: forms[k], arrivalTemp: 31 + (k % 3), defectQty: 4 + (k % 5),
+        refundAmount: 24.9, status: 'resolved',
+        resolution: '照片核实属实，坏果包赔已退款', handledBy: users[7].id,
+        resolvedAt: new Date('2026-10-06T16:00:00'),
+      }),
+    );
+    const savedSt = await this.aftersales.save(tickets);
+    for (const t of savedSt) await this.orders.update(t.orderId, { status: 'refunded' });
+
+    // 自动形成坏果预警：冻结同批剩余库存 + 五维归因 + 客服优先名单（武汉同城/长沙同线）
+    await this.defectAlertsSvc.triggerForBatch(batch.id);
+    await this.farmersSvc.recomputeStats(f1.id);
+
+    // 苹果批次补一条「已结案·农户采摘成熟度过高」预警，演示结算扣除农户赔付
+    const apple = await this.batches.findOne({ where: { batchNo: 'B20260920-AP-01' } });
+    const appleAlert = await this.defectAlerts.save(
+      this.defectAlerts.create({
+        alertNo: 'DA20261004-AP01', batchId: apple.id, status: 'closed',
+        defectRate: 0.054, defectCount: 14, soldQty: 260, frozenQty: 0,
+        packagingType: '泡沫托+纸箱', tempZone: '冷藏',
+        harvestToDeliveryDays: 2.6, tempBreachRate: 0.008,
+        rootCause: 'harvest_ripeness', responsibleParty: 'farmer', actionType: 'deduct_farmer',
+        farmerDeductionAmount: 105 as any,
+        conclusion: '比对出库照片（果实八成熟、果面完好、箱内托格完好）与到货照片（外箱无压痕、果肉过熟软烂），运输温区全程 2-6℃ 正常、仅 2 单晚到，排除包装承压与物流温区问题，认定为农户采摘成熟度过高，结算扣除对应赔付 ¥105；其余非坏果退款仍由农户承担。',
+        reviewedBy: users[7].id,
+        reviewedAt: new Date('2026-10-04T15:00:00'),
+        closedAt: new Date('2026-10-04T18:00:00'),
+      }),
+    );
+    // 已存在的苹果待打款结算单按定责结果重算农户扣减
+    await this.settlementsSvc.recomputeForBatch(apple.id);
+    void appleAlert;
   }
 }
 
@@ -282,7 +413,10 @@ export class SeedService implements OnApplicationBootstrap {
     TypeOrmModule.forFeature([
       User, Farmer, Product, Batch, Selection, Livestream, InventoryLock,
       Order, ShippingTask, Aftersale, Settlement, RiskEvent, BrandNotice, FeedbackDecision,
+      DefectAlert,
     ]),
+    DefectAlertsModule,
+    SettlementsModule,
   ],
   providers: [SeedService],
 })

@@ -5,7 +5,10 @@
         <template #header>
           <div class="head">
             <span>批次全链路：{{ chain.batch.batchNo }} · {{ chain.batch.product?.name }}</span>
-            <el-tag :type="batchTag(chain.batch.status)">{{ batchText(chain.batch.status) }}</el-tag>
+            <div>
+              <el-tag v-if="chain.batch.frozenByAlert" type="danger" effect="dark" style="margin-right: 6px">坏果预警·剩余库存已冻结</el-tag>
+              <el-tag :type="batchTag(chain.batch.status)">{{ batchText(chain.batch.status) }}</el-tag>
+            </div>
           </div>
         </template>
         <el-descriptions :column="4" border size="small">
@@ -85,6 +88,8 @@
               <div v-for="t in chain.aftersales" :key="t.id" class="line">
                 <el-tag size="small" :type="t.type === '坏果' ? 'danger' : 'warning'" effect="plain">{{ t.type }}</el-tag>
                 {{ t.description }}
+                <el-tag v-if="t.damageForm" size="small" type="danger" effect="plain">{{ t.damageForm }}{{ t.arrivalTemp != null ? `·${t.arrivalTemp}℃` : '' }}</el-tag>
+                <el-tag v-if="t.photoEvidence" size="small" type="info" effect="plain">用户照片×{{ t.photoEvidence.split(',').length }}</el-tag>
                 <el-tag size="small" :type="{ pending: 'warning', resolved: 'success', rejected: 'info' }[t.status]">{{ { pending: '待处理', resolved: '已解决', rejected: '已拒绝' }[t.status] }}</el-tag>
                 <span v-if="Number(t.refundAmount) > 0" style="color: #f56c6c">-¥{{ t.refundAmount }}</span>
               </div>
@@ -97,9 +102,10 @@
             <b>⑥ 农户结算</b>
             <div class="stage">
               <div v-for="s in chain.settlements" :key="s.id" class="line">
-                订单 {{ s.orderCount }} 笔 · 应收 ¥{{ s.grossAmount }} − 售后扣减 ¥{{ s.refundAmount }} =
+                订单 {{ s.orderCount }} 笔 · 应收 ¥{{ s.grossAmount }} − 农户承担 ¥{{ s.farmerDeduction ?? s.refundAmount }} =
                 <b style="color: #67c23a">¥{{ s.netAmount }}</b>
                 <el-tag size="small" :type="s.status === 'settled' ? 'success' : 'warning'">{{ s.status === 'settled' ? '已打款' : '待结算' }}</el-tag>
+                <span v-if="Number(s.refundAmount) > Number(s.farmerDeduction || 0)" class="sub">（售后退款共 ¥{{ s.refundAmount }}，其中平台/物流/包装承担 ¥{{ (Number(s.refundAmount) - Number(s.farmerDeduction || 0)).toFixed(2) }}）</span>
               </div>
               <div v-if="!chain.settlements.length" class="sub">尚未生成结算单</div>
             </div>
@@ -116,6 +122,25 @@
               <div v-for="d in chain.decisions" :key="'d' + d.id" class="line">
                 <el-tag size="small" type="primary" effect="dark">{{ decisionText(d.decisionType) }}</el-tag>
                 {{ d.decision }}
+              </div>
+            </div>
+          </el-timeline-item>
+
+          <!-- 8 坏果预警与定责 -->
+          <el-timeline-item v-if="(chain.defectAlerts || []).length" type="danger" placement="top">
+            <b>⑧ 坏果率异常预警 · 冻结与定责复盘</b>
+            <div class="stage">
+              <div v-for="a in chain.defectAlerts" :key="'a' + a.id" class="line">
+                <el-tag size="small" :type="{ open: 'danger', reviewing: 'warning', closed: 'success' }[a.status]">
+                  {{ { open: '预警中(已冻结)', reviewing: '复盘中', closed: '已结案' }[a.status] }}
+                </el-tag>
+                {{ a.alertNo }}：坏果率 {{ (a.defectRate * 100).toFixed(1) }}%（{{ a.defectCount }}/{{ a.soldQty }}），冻结剩余库存 {{ a.frozenQty }} 件
+                <template v-if="a.rootCause && a.rootCause !== 'undetermined'">
+                  → 定责 <b>{{ causeText(a.rootCause) }}</b>
+                  <span v-if="a.newPackaging">，后续换「{{ a.newPackaging }}」</span>
+                  <span v-if="Number(a.farmerDeductionAmount) > 0">，结算扣农户 ¥{{ a.farmerDeductionAmount }}</span>
+                </template>
+                <el-button link type="primary" size="small" @click="$router.push('/defect-alerts')">去复盘</el-button>
               </div>
             </div>
           </el-timeline-item>
@@ -139,6 +164,7 @@ function batchText(s) { return { pending: '待选品', qc_passed: '质检通过'
 function batchTag(s) { return { pending: 'warning', qc_passed: 'success', qc_failed: 'danger', locked: 'primary', on_sale: 'danger', closed: 'info' }[s] || 'info'; }
 function liveText(s) { return { planned: '已排期', locked: '已锁库', live: '直播中', ended: '已结束', cancelled: '已取消' }[s] || s; }
 function decisionText(t) { return { continue_farmer: '继续选择该农户', drop_farmer: '暂停该农户排播', adjust_anchor: '调整主播口径', reduce_presale: '降低预售量', brand_notice: '品牌风险说明' }[t] || t; }
+function causeText(t) { return { packaging_pressure: '包装承压不足', harvest_ripeness: '农户采摘成熟度过高', logistics_temp: '物流温区/时效异常', mixed: '多因素叠加', undetermined: '暂未认定', none: '排除批次性问题' }[t] || t; }
 function fmtTime(t) { return t ? String(t).replace('T', ' ').slice(0, 16) : ''; }
 
 onMounted(async () => {

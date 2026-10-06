@@ -50,6 +50,7 @@ const allMenus = [
   { path: '/aftersales', title: '售后工单', icon: 'Service', roles: ['admin', 'operator', 'aftersales'] },
   { path: '/settlements', title: '农户结算', icon: 'Wallet', roles: ['admin', 'operator', 'farmer'] },
   { path: '/risks', title: '风险中心', icon: 'Warning', roles: ['admin', 'operator', 'warehouse', 'aftersales'] },
+  { path: '/defect-alerts', title: '坏果预警', icon: 'AlarmClock', roles: ['admin', 'operator', 'warehouse', 'aftersales'] },
   { path: '/notices', title: '品牌公告', icon: 'Bell', roles: ['admin', 'operator'] },
   { path: '/analytics', title: '复盘分析', icon: 'DataAnalysis', roles: ['admin', 'operator', 'aftersales'] },
 ];

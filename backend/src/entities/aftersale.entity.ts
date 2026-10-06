@@ -35,6 +35,22 @@ export class Aftersale {
   @Column('text')
   description: string;
 
+  /** 用户拍照证据：图片地址/标识（多张逗号分隔，演示环境以占位 URL 表示） */
+  @Column('text', { name: 'photo_evidence', nullable: true })
+  photoEvidence: string;
+
+  /** 到货时果实损伤形态：磕碰压伤/过熟软烂/霉变异味/失水皱缩/整箱完好 */
+  @Column({ name: 'damage_form', nullable: true })
+  damageForm: string;
+
+  /** 用户所在城市到货当天气温（℃），坏果归因用 */
+  @Column('float', { name: 'arrival_temp', nullable: true })
+  arrivalTemp: number;
+
+  /** 坏果数量（个/件），用于坏果率与赔付核算 */
+  @Column('int', { name: 'defect_qty', nullable: true })
+  defectQty: number;
+
   @Column('decimal', { name: 'refund_amount', precision: 10, scale: 2, default: 0 })
   refundAmount: number;
 
